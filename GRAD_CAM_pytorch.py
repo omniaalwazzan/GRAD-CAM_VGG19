@@ -1,4 +1,5 @@
 ### This a re-implementation of the code presented under this link: https://medium.com/@stepanulyanin/implementing-grad-cam-in-pytorch-ea0937c31e82  
+
 import torch
 import torch.nn as nn
 from torch.utils import data
@@ -7,6 +8,8 @@ from torchvision import transforms
 from torchvision import datasets
 import matplotlib.pyplot as plt
 import numpy as np
+import cv2
+
 #%%
 
 class VGG(nn.Module):
@@ -52,23 +55,22 @@ class VGG(nn.Module):
     def get_activations(self, x):
         return self.features_conv(x)
     #%%
-path =r"C:\Users\Omnia\Pictures\data/"
-# use the ImageNet transformation
+path = r"C:\Users\Omnia\Pictures\data/" # this suppose to contain folder of classes /dog/cat
+path_to_save_heatmap = r"C:\Users\Omnia\Pictures\data\dog\map.jpg"
+path_to_single_img = r"C:\Users\Omnia\Pictures\data\dog\dog.jpg"
+
 transform = transforms.Compose([transforms.Resize((224, 224)), 
                                 transforms.ToTensor(),
                                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
 # define a 1 image dataset
 dataset = datasets.ImageFolder(root=path, transform=transform)
-
 # define the dataloader to load that single image
 dataloader = data.DataLoader(dataset=dataset, shuffle=False, batch_size=1)
 #%%
 
 
-# initialize the VGG model
 vgg = VGG()
-# set the evaluation mode
 vgg.eval()
 # get the image from the dataloader
 img, _ = next(iter(dataloader))
@@ -99,24 +101,26 @@ heatmap = torch.mean(activations, dim=1).squeeze()
 # expression (2) in https://arxiv.org/pdf/1610.02391.pdf
 heatmap = np.maximum(heatmap, 0)
 
-# normalize the heatmap
 heatmap /= torch.max(heatmap)
 
-# draw the heatmap
-plt.matshow(heatmap.squeeze())
+#plt.matshow(heatmap.squeeze())
 heatmap_np = heatmap.detach().cpu().numpy()
 
 #%%
 
-import cv2
-img = cv2.imread(r"C:\Users\Omnia\Pictures\data\dog\dog.jpg")
+img = cv2.imread(path_to_single_img)
 heatmap = cv2.resize(heatmap_np, (img.shape[1], img.shape[0]))
 heatmap = np.uint8(255 * heatmap)
 heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
 superimposed_img = cv2.addWeighted(img, 0.5, heatmap, 0.5, 0)
-cv2.imwrite(r"C:\Users\Omnia\Pictures\data\dog\map.jpg", superimposed_img)
+#cv2.imwrite(path_to_save_heatmap, superimposed_img)
+
 #%%
-# Display the superimposed image
-cv2.imshow('Superimposed Image', superimposed_img)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+ax1.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+ax1.set_title('Original Image')
+ax2.imshow(cv2.cvtColor(superimposed_img, cv2.COLOR_BGR2RGB))
+ax2.set_title('Grad-CAM Heatmap')
+cbar = fig.colorbar(plt.cm.ScalarMappable(cmap='jet'), ax=ax2)
+cbar.set_label('Intensity')
+plt.show()
