@@ -12,10 +12,11 @@ from sklearn.metrics import roc_curve, auc
 import matplotlib.pyplot as plt
 from torch.nn import Linear, Dropout
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, confusion_matrix
 #%%
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 from torchsummary import summary
-path = r"C:\Users\Omnia\Desktop\Phd\DNA_methy\mVal_cv_feat.csv" 
+path = r"C:/Users/omnia/OneDrive - University of Jeddah/PhD progress/DNA_methyalation/CSV/mVal_cv_feat.csv" 
 DNA_df = pd.read_csv(path)
 
 #%%
@@ -239,3 +240,63 @@ for sample_index in range(len(integrated_gradients_array)):
     })
 
 results_df = pd.DataFrame(results)
+
+
+
+#%%
+
+
+def evaluate_mlp(model, X_test, y_test):
+    model.eval()
+    with torch.no_grad():
+        outputs = model(X_test)
+        probabilities = F.softmax(outputs, dim=1)
+        _, predicted = torch.max(outputs, 1)
+    
+    y_test_np = y_test.numpy()
+    y_score_np = probabilities.numpy()
+    y_pred_np = predicted.numpy()
+
+    # Calculate accuracy for each class
+    class_accuracies = {}
+    for class_idx in np.unique(y_test_np):
+        class_mask = (y_test_np == class_idx)
+        class_acc = accuracy_score(y_test_np[class_mask], y_pred_np[class_mask])
+        class_accuracies[class_idx] = class_acc
+    
+    # Sort the class accuracies dictionary by accuracy
+    sorted_class_accuracies = {k: v for k, v in sorted(class_accuracies.items(), key=lambda item: item[1], reverse=True)}
+    
+    # Calculate mean per-class accuracy
+    conf_matrix = confusion_matrix(y_test_np, y_pred_np)
+    per_class_accuracy = np.diag(conf_matrix) / np.sum(conf_matrix, axis=1)
+    mean_per_class_acc = np.mean(per_class_accuracy)
+
+    # Print the top 5 classes with the highest accuracy
+    print("Top 5 classes with highest accuracy:")
+    top_classes = {}
+    for i, (class_idx, acc) in enumerate(sorted_class_accuracies.items()):
+        if i >= 5:
+            break
+        print(f"Class {class_idx}: Accuracy {acc:.4f}")
+        top_classes[class_idx] = acc
+    
+    # Sort the class accuracies dictionary by accuracy in ascending order
+    sorted_class_accuracies_asc = {k: v for k, v in sorted(class_accuracies.items(), key=lambda item: item[1])}
+
+    # Print the worst 5 classes with the lowest accuracy
+    print("\Worst 5 classes with lowest accuracy:")
+    bottom_classes = {}
+    for i, (class_idx, acc) in enumerate(sorted_class_accuracies_asc.items()):
+        if i >= 5:
+            break
+        print(f"Class {class_idx}: Accuracy {acc:.4f}")
+        bottom_classes[class_idx] = acc
+
+    print(f"\nMean per-class accuracy: {mean_per_class_acc:.4f}")
+
+    return top_classes, bottom_classes, mean_per_class_acc
+
+X_test_tensor = torch.tensor(X_test.values, dtype=torch.float32)
+y_test_tensor = torch.tensor(y_test.values, dtype=torch.long)
+top_classes, bottom_classes, mean_accuracy = evaluate_mlp(tabular_model, X_test_tensor, y_test_tensor)
